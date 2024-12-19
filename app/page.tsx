@@ -24,6 +24,16 @@ const WalletMultiButtonDynamic = dynamic(
   { ssr: false }
 )
 
+// Type for signTransaction
+type SignTransaction = (tx: Transaction) => Promise<Transaction>;
+
+// Define a wallet interface that matches Anchor's Wallet requirement (no `any`)
+interface Wallet {
+  publicKey: PublicKey;
+  signTransaction: SignTransaction;
+  signAllTransactions(txs: Transaction[]): Promise<Transaction[]>;
+}
+
 // Just cast the IDL directly to Idl
 const idl = {
   version: "0.1.0",
@@ -46,8 +56,6 @@ const idl = {
   ]
 } as Idl;
 
-type SignTransaction = (tx: Transaction) => Promise<Transaction>;
-
 const PROGRAM_ID = new PublicKey("DY5LZb7nuNzaJeKrrxo3UbUE2qN8nMrXJprYJqHvCmTD")
 const SOL_RECEIVER = new PublicKey("9457hfGKDSKk2oM1qe4qpuchjXFa5CHENzWDvLC3otUs")
 const MINT = new PublicKey("2EqGuqPAipp9kPCrRbgxf5njgZ9NgCpzpiCZQJ6wYjN6")
@@ -65,12 +73,11 @@ async function purchaseTokens(
 
   const lamports = new BN(amount * 1_000_000_000)
 
-  // Construct a wallet object that AnchorProvider will accept.
-  // Casting to 'any' to bypass strict type checks.
-  const wallet: any = {
-    publicKey,
+  // Construct a wallet object without `any`
+  const wallet: Wallet = {
+    publicKey: publicKey, // Guaranteed non-null by caller
     signTransaction,
-    signAllTransactions: async (txs: Transaction[]) => txs
+    signAllTransactions: async (txs) => txs
   }
 
   const provider = new AnchorProvider(connection, wallet, {})
@@ -136,6 +143,7 @@ export default function PresalePage() {
   }, [])
 
   const handlePurchase = async () => {
+    // Ensure publicKey and signTransaction exist before calling purchaseTokens
     if (!publicKey || !signTransaction) {
       alert("Please connect your wallet first!")
       return
