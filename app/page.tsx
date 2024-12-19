@@ -12,50 +12,46 @@ import Image from 'next/image'
 
 import { PublicKey, SystemProgram, Transaction, Connection } from "@solana/web3.js"
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
-import { Program, AnchorProvider, BN } from "@project-serum/anchor"
+import { Program, AnchorProvider, BN, Idl } from "@project-serum/anchor"
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddress,
 } from "@solana/spl-token"
 
-// Dynamically import WalletMultiButton so it only renders client-side
 const WalletMultiButtonDynamic = dynamic(
   async () => (await import('@solana/wallet-adapter-react-ui')).WalletMultiButton,
   { ssr: false }
 )
 
-// Program-specific constants
+// Just cast the IDL directly to Idl
+const idl = {
+  version: "0.1.0",
+  name: "presale_program",
+  instructions: [
+    {
+      name: "purchaseTokens",
+      accounts: [
+        { name: "user", isMut: true, isSigner: true },
+        { name: "solReceiver", isMut: true, isSigner: false },
+        { name: "mint", isMut: true, isSigner: false },
+        { name: "userAta", isMut: true, isSigner: false },
+        { name: "mintAuthorityPda", isMut: false, isSigner: false },
+        { name: "tokenProgram", isMut: false, isSigner: false },
+        { name: "associatedTokenProgram", isMut: false, isSigner: false },
+        { name: "systemProgram", isMut: false, isSigner: false }
+      ],
+      args: [{ name: "lamports", type: "u64" }]
+    }
+  ]
+} as Idl;
+
+type SignTransaction = (tx: Transaction) => Promise<Transaction>;
+
 const PROGRAM_ID = new PublicKey("DY5LZb7nuNzaJeKrrxo3UbUE2qN8nMrXJprYJqHvCmTD")
 const SOL_RECEIVER = new PublicKey("9457hfGKDSKk2oM1qe4qpuchjXFa5CHENzWDvLC3otUs")
 const MINT = new PublicKey("2EqGuqPAipp9kPCrRbgxf5njgZ9NgCpzpiCZQJ6wYjN6")
 
-// IDL for the program
-const idl = {
-  "version": "0.1.0",
-  "name": "presale_program",
-  "instructions": [
-    {
-      "name": "purchaseTokens",
-      "accounts": [
-        { "name": "user", "isMut": true, "isSigner": true },
-        { "name": "solReceiver", "isMut": true, "isSigner": false },
-        { "name": "mint", "isMut": true, "isSigner": false },
-        { "name": "userAta", "isMut": true, "isSigner": false },
-        { "name": "mintAuthorityPda", "isMut": false, "isSigner": false },
-        { "name": "tokenProgram", "isMut": false, "isSigner": false },
-        { "name": "associatedTokenProgram", "isMut": false, "isSigner": false },
-        { "name": "systemProgram", "isMut": false, "isSigner": false }
-      ],
-      "args": [{ "name": "lamports", "type": "u64" }]
-    }
-  ]
-}
-
-// Define a type for signTransaction from the wallet
-type SignTransaction = (tx: Transaction) => Promise<Transaction>;
-
-// purchaseTokens function
 async function purchaseTokens(
   connection: Connection,
   publicKey: PublicKey,
@@ -68,8 +64,17 @@ async function purchaseTokens(
   }
 
   const lamports = new BN(amount * 1_000_000_000)
-  const provider = new AnchorProvider(connection, { publicKey, signTransaction } as any, {})
-  const program = new Program(idl as any, PROGRAM_ID, provider)
+
+  // Construct a wallet object that AnchorProvider will accept.
+  // Casting to 'any' to bypass strict type checks.
+  const wallet: any = {
+    publicKey,
+    signTransaction,
+    signAllTransactions: async (txs: Transaction[]) => txs
+  }
+
+  const provider = new AnchorProvider(connection, wallet, {})
+  const program = new Program(idl, PROGRAM_ID, provider)
 
   const [mintAuthorityPda] = await PublicKey.findProgramAddress(
     [Buffer.from("mint_authority")],
@@ -77,8 +82,10 @@ async function purchaseTokens(
   )
 
   const userAta = await getAssociatedTokenAddress(MINT, publicKey)
-  const ix = await program.instruction.purchaseTokens(lamports, {
-    accounts: {
+
+  const ix = await program.methods
+    .purchaseTokens(lamports)
+    .accounts({
       user: publicKey,
       solReceiver: SOL_RECEIVER,
       mint: MINT,
@@ -87,8 +94,8 @@ async function purchaseTokens(
       tokenProgram: TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
-    },
-  })
+    })
+    .instruction()
 
   const transaction = new Transaction().add(ix)
   transaction.feePayer = publicKey
@@ -111,7 +118,6 @@ export default function PresalePage() {
   const { connection } = useConnection()
   const { publicKey, signTransaction } = useWallet()
 
-  // Countdown logic
   useEffect(() => {
     const targetDate = new Date('2024-02-01T00:00:00')
     const interval = setInterval(() => {
@@ -130,17 +136,17 @@ export default function PresalePage() {
   }, [])
 
   const handlePurchase = async () => {
-    try {
-      if (!publicKey || !signTransaction) {
-        alert("Please connect your wallet first!")
-        return
-      }
+    if (!publicKey || !signTransaction) {
+      alert("Please connect your wallet first!")
+      return
+    }
 
+    try {
       const txSig = await purchaseTokens(connection, publicKey, signTransaction, inputAmount)
       alert(`Purchase successful! Tx Signature: ${txSig}`)
     } catch (error: unknown) {
       console.error("Error during purchase:", error)
-      const message = (error instanceof Error) ? error.message : String(error)
+      const message = error instanceof Error ? error.message : String(error)
       alert(`An unexpected error occurred: ${message}`)
     }
   }
@@ -152,7 +158,6 @@ export default function PresalePage() {
         <div className="relative container mx-auto px-4 py-20">
           {/* Social Media Links */}
           <div className="absolute top-4 left-4 z-10 flex space-x-4">
-            {/* X Logo with next/image */}
             <a
               href="https://twitter.com/YourTwitterProfile"
               target="_blank"
@@ -168,7 +173,12 @@ export default function PresalePage() {
                 style={{ objectFit: 'contain' }}
               />
             </a>
-            <a href="https://t.me/YourTelegramGroup" target="_blank" rel="noopener noreferrer" className="text-white hover:text-[#00FFFF] transition-colors">
+            <a
+              href="https://t.me/YourTelegramGroup"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white hover:text-[#00FFFF] transition-colors"
+            >
               <Send className="w-6 h-6" />
             </a>
           </div>
