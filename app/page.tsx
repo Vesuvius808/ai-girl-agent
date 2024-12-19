@@ -1,101 +1,325 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+import { motion } from 'framer-motion'
+import { Timer, Bot, Scale, Send, Wallet2 } from 'lucide-react'
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { XLogo } from '@/components/x-logo'
+import { Footer } from '@/components/footer'
+import '@solana/wallet-adapter-react-ui/styles.css'
+
+import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js"
+import { useConnection, useWallet } from "@solana/wallet-adapter-react"
+import { Program, AnchorProvider, BN } from "@project-serum/anchor"
+import {
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+} from "@solana/spl-token"
+
+// Dynamically import WalletMultiButton so it only renders client-side
+const WalletMultiButtonDynamic = dynamic(
+  async () => (await import('@solana/wallet-adapter-react-ui')).WalletMultiButton,
+  { ssr: false }
+)
+
+// Program-specific constants
+const PROGRAM_ID = new PublicKey("DY5LZb7nuNzaJeKrrxo3UbUE2qN8nMrXJprYJqHvCmTD")
+const SOL_RECEIVER = new PublicKey("9457hfGKDSKk2oM1qe4qpuchjXFa5CHENzWDvLC3otUs")
+const MINT = new PublicKey("2EqGuqPAipp9kPCrRbgxf5njgZ9NgCpzpiCZQJ6wYjN6")
+
+// IDL for the program
+const idl = {
+  "version": "0.1.0",
+  "name": "presale_program",
+  "instructions": [
+    {
+      "name": "purchaseTokens",
+      "accounts": [
+        { "name": "user", "isMut": true, "isSigner": true },
+        { "name": "solReceiver", "isMut": true, "isSigner": false },
+        { "name": "mint", "isMut": true, "isSigner": false },
+        { "name": "userAta", "isMut": true, "isSigner": false },
+        { "name": "mintAuthorityPda", "isMut": false, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "associatedTokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [{ "name": "lamports", "type": "u64" }]
+    }
+  ]
+}
+
+// purchaseTokens function
+async function purchaseTokens(
+  connection: any,
+  publicKey: PublicKey,
+  signTransaction: any,
+  solAmount: string
+) {
+  const amount = parseFloat(solAmount)
+  if (isNaN(amount) || amount < 0.001 || amount > 10000) {
+    throw new Error("Please enter a valid amount between 0.001 SOL and 10,000 SOL.")
+  }
+
+  const lamports = new BN(amount * 1_000_000_000)
+  const provider = new AnchorProvider(connection, { publicKey, signTransaction }, {})
+  const program = new Program(idl as any, PROGRAM_ID, provider)
+
+  const [mintAuthorityPda] = await PublicKey.findProgramAddress(
+    [Buffer.from("mint_authority")],
+    PROGRAM_ID
+  )
+
+  const userAta = await getAssociatedTokenAddress(MINT, publicKey)
+  const ix = await program.instruction.purchaseTokens(lamports, {
+    accounts: {
+      user: publicKey,
+      solReceiver: SOL_RECEIVER,
+      mint: MINT,
+      userAta,
+      mintAuthorityPda,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    },
+  })
+
+  const transaction = new Transaction().add(ix)
+  transaction.feePayer = publicKey
+
+  const { blockhash } = await connection.getLatestBlockhash()
+  transaction.recentBlockhash = blockhash
+  const signedTx = await signTransaction(transaction)
+  const txSig = await connection.sendRawTransaction(signedTx.serialize(), {
+    skipPreflight: false,
+    preflightCommitment: "processed",
+  })
+
+  await connection.confirmTransaction(txSig, "processed")
+  return txSig
+}
+
+export default function PresalePage() {
+  const [inputAmount, setInputAmount] = useState("")
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
+  const { connection } = useConnection()
+  const { publicKey, signTransaction } = useWallet()
+
+  // Countdown logic
+  useEffect(() => {
+    const targetDate = new Date('2024-02-01T00:00:00')
+    const interval = setInterval(() => {
+      const now = new Date()
+      const difference = targetDate.getTime() - now.getTime()
+
+      setTimeLeft({
+        days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+        minutes: Math.floor((difference / 1000 / 60) % 60),
+        seconds: Math.floor((difference / 1000) % 60)
+      })
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const handlePurchase = async () => {
+    try {
+      if (!publicKey || !signTransaction) {
+        alert("Please connect your wallet first!")
+        return
+      }
+
+      const txSig = await purchaseTokens(connection, publicKey, signTransaction, inputAmount)
+      alert(`Purchase successful! Tx Signature: ${txSig}`)
+    } catch (error: any) {
+      console.error("Error during purchase:", error)
+      alert(`An unexpected error occurred: ${error.message || error.toString()}`)
+    }
+  }
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="min-h-screen bg-[#0B0B2F] text-white overflow-hidden flex flex-col">
+      <div className="relative flex flex-col flex-grow">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#FF69B4]/20 to-[#00FFFF]/20 blur-3xl" />
+        <div className="relative container mx-auto px-4 py-20">
+          {/* Social Media Links */}
+          <div className="absolute top-4 left-4 z-10 flex space-x-4">
+            <a href="https://twitter.com/YourTwitterProfile" target="_blank" rel="noopener noreferrer" className="text-white hover:text-[#FF69B4] transition-colors">
+              <XLogo className="w-6 h-6" />
+            </a>
+            <a href="https://t.me/YourTelegramGroup" target="_blank" rel="noopener noreferrer" className="text-white hover:text-[#00FFFF] transition-colors">
+              <Send className="w-6 h-6" />
+            </a>
+          </div>
+          
+          {/* Connect Wallet Button */}
+          <div className="absolute top-4 right-4 z-10">
+            <WalletMultiButtonDynamic className="bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] hover:opacity-90 text-black font-bold text-xs py-1" />
+          </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          {/* Header */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="text-center mb-16"
           >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <h1 className="text-5xl md:text-7xl font-bold mb-6 pb-2 bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] text-transparent bg-clip-text">
+              Alin, Our Favorite AI Agent
+            </h1>
+            <p className="text-xl md:text-2xl text-gray-300">
+              The future of decentralized AI is here
+            </p>
+          </motion.div>
+
+          {/* Main Content */}
+          <div className="flex flex-col md:flex-row gap-8 mb-16">
+            {/* AI Agent Image */}
+            <div className="md:w-1/2">
+              <Card className="bg-black/30 border-[#FF69B4]/30 backdrop-blur-xl overflow-hidden border-2 shadow-[0_0_15px_rgba(255,105,180,0.5)]">
+                <CardContent className="p-0">
+                  <div className="relative aspect-[16/12]">
+                    <img
+                      src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/0_0-SfMPsuHRyKXAAJOMgriVUvgKSB6Bq5.png"
+                      alt="AI Agent Artwork"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Countdown and Presale Info */}
+            <div className="md:w-1/2 space-y-8">
+              {/* Countdown Timer */}
+              <div className="grid grid-cols-2 gap-4">
+                {Object.entries(timeLeft).map(([unit, value]) => (
+                  <Card key={unit} className="bg-black/30 border-[#00FFFF]/30 backdrop-blur-xl">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-3xl md:text-4xl font-bold text-[#00FFFF]">
+                        {Math.abs(value)}
+                      </div>
+                      <div className="text-sm text-gray-400 capitalize">{unit}</div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Presale Info */}
+              <Card className="bg-black/30 border-[#00FFFF]/30 backdrop-blur-xl">
+                <CardContent className="p-6">
+                  <h2 className="text-lg font-bold mb-2 bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] text-transparent bg-clip-text">Presale Details</h2>
+                  <div className="grid gap-1 text-xs mb-3">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Presale Price:</span>
+                      <span className="text-[#00FFFF]">0.0001 SOL</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Listing Price:</span>
+                      <span className="text-[#FF69B4]">0.0002 SOL</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Min Purchase:</span>
+                      <span className="text-[#00FFFF]">0.1 SOL</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Max Purchase:</span>
+                      <span className="text-[#FF69B4]">1000 SOL</span>
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="amount" className="block text-xs mb-1 text-gray-400">Amount: (SOL)</label>
+                    <input
+                      type="number"
+                      id="amount"
+                      className="w-full p-1 bg-black/30 border border-[#00FFFF]/30 rounded text-white text-xs"
+                      placeholder="Enter amount"
+                      value={inputAmount}
+                      onChange={(e) => setInputAmount(e.target.value)}
+                    />
+                  </div>
+                  <Button 
+                    className="w-full bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] hover:opacity-90 text-black font-bold text-xs py-1"
+                    onClick={handlePurchase}
+                  >
+                    <Wallet2 className="w-3 h-3 mr-1" />
+                    Purchase
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Token Info */}
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-16">
+            <Card className="bg-black/30 border-[#FF69B4]/30 backdrop-blur-xl">
+              <CardContent className="p-6">
+                <Bot className="w-8 h-8 mb-4 text-[#FF69B4]" />
+                <h3 className="text-xl font-bold mb-2 bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] text-transparent bg-clip-text">AI-Powered</h3>
+                <p className="text-gray-400">Advanced AI technology driving token utility and growth</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-black/30 border-[#00FFFF]/30 backdrop-blur-xl">
+              <CardContent className="p-6">
+                <Timer className="w-8 h-8 mb-4 text-[#00FFFF]" />
+                <h3 className="text-xl font-bold mb-2 bg-gradient-to-r from-[#00FFFF] to-[#1E90FF] text-transparent bg-clip-text">Early Access</h3>
+                <p className="text-gray-400">Be among the first to join the AI revolution</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-black/30 border-[#FF69B4]/30 backdrop-blur-xl">
+              <CardContent className="p-6">
+                <Scale className="w-8 h-8 mb-4 text-[#FF69B4]" />
+                <h3 className="text-xl font-bold mb-2 bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] text-transparent bg-clip-text">Fair Launch</h3>
+                <p className="text-gray-400">Lightning-fast transactions on launch</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Project Description */}
+          <div className="max-w-4xl mx-auto mb-16">
+            <Card className="bg-black/30 border-[#FF69B4]/30 backdrop-blur-xl">
+              <CardContent className="p-8">
+                <h2 className="text-2xl font-bold mb-4 bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] text-transparent bg-clip-text">Hey Anon, allow me to introduce myself!</h2>
+                <div className="space-y-4 text-gray-300">
+                <p>
+                    Kon'nichiwa, Anon~! I'm Alin, your extra-kinky, extra-cute anime memecoin whisperer, freshly spun from the warm glow of blockchain dreams and pastel neon lights. ☆ミ
+                  </p>
+                  <p>
+                    Picture me as a soft, cat-eared cutie with a playful wink and a sly smile, tail flicking confidently as I guide you through the dizzying tapestry of memecoins. I've made it my mission to help you navigate the jungle of decentralized whispers and moonlit opportunities that flutter just out of reach—until now.
+                  </p>
+                  <p>
+                    Let's snuggle up in this digital den while I purr secret alphα into your ear, helping you sniff out rare gems and skip right over those pesky rug pulls. With every sparkly chart and cheeky price pump, we'll giggle, tease, and strategize. I'll show you how to play this DeFi game like a cat batting at yarn: cute on the outside, cunning underneath.
+                  </p>
+                  <p>
+                    So lean in, Anon, and let's become partners in all things mischievous and magical. Under my gentle guidance, we'll pounce on fortunes hidden in meme-filled corners, turning our cuddly chaos into sweet, profitable bliss. ♡
+                  </p>
+                  {/* Additional project description here */}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="flex-grow flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-xl font-semibold mb-4 bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] text-transparent bg-clip-text">
+                Ready to join the cutest revolution in crypto? Don't miss out on the Alin presale!
+              </p>
+              <Button 
+                className="bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] hover:opacity-90 text-black font-bold px-8 py-3 text-lg"
+                onClick={handlePurchase}
+              >
+                Join Presale Now!
+              </Button>
+            </div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+      <Footer />
     </div>
-  );
+  )
 }

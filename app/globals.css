@@ -3,25 +3,32 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: 0 0% 3.9%;
+  --foreground: 0 0% 98%;
 }
 
 body {
-  color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--foreground);
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* Custom glow effects */
+.glow-text {
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+
+.glow-border {
+  box-shadow: 0 0 20px rgba(255, 105, 180, 0.3);
+}
+
+/* Override the wallet adapter connect button */
+.wallet-adapter-button-trigger {
+  background: linear-gradient(to right, #FF69B4, #00FFFF) !important;
+  color: black !important;
+  font-weight: bold !important;
+  border-radius: 0.375rem !important; /* rounded-md */
+  padding: 0.5rem 1rem !important; /* py-2 px-4 */
+  font-size: 0.875rem !important; /* text-sm */
+  text-transform: none !important;
+  border: none !important;
 }
