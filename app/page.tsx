@@ -6,11 +6,11 @@ import { motion } from 'framer-motion'
 import { Timer, Bot, Scale, Send, Wallet2 } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { XLogo } from '@/components/x-logo'
 import { Footer } from '@/components/footer'
 import '@solana/wallet-adapter-react-ui/styles.css'
+import Image from 'next/image'
 
-import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js"
+import { PublicKey, SystemProgram, Transaction, Connection } from "@solana/web3.js"
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
 import { Program, AnchorProvider, BN } from "@project-serum/anchor"
 import {
@@ -52,11 +52,14 @@ const idl = {
   ]
 }
 
+// Define a type for signTransaction from the wallet
+type SignTransaction = (tx: Transaction) => Promise<Transaction>;
+
 // purchaseTokens function
 async function purchaseTokens(
-  connection: any,
+  connection: Connection,
   publicKey: PublicKey,
-  signTransaction: any,
+  signTransaction: SignTransaction,
   solAmount: string
 ) {
   const amount = parseFloat(solAmount)
@@ -65,7 +68,7 @@ async function purchaseTokens(
   }
 
   const lamports = new BN(amount * 1_000_000_000)
-  const provider = new AnchorProvider(connection, { publicKey, signTransaction }, {})
+  const provider = new AnchorProvider(connection, { publicKey, signTransaction } as any, {})
   const program = new Program(idl as any, PROGRAM_ID, provider)
 
   const [mintAuthorityPda] = await PublicKey.findProgramAddress(
@@ -135,9 +138,10 @@ export default function PresalePage() {
 
       const txSig = await purchaseTokens(connection, publicKey, signTransaction, inputAmount)
       alert(`Purchase successful! Tx Signature: ${txSig}`)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error during purchase:", error)
-      alert(`An unexpected error occurred: ${error.message || error.toString()}`)
+      const message = (error instanceof Error) ? error.message : String(error)
+      alert(`An unexpected error occurred: ${message}`)
     }
   }
 
@@ -148,8 +152,21 @@ export default function PresalePage() {
         <div className="relative container mx-auto px-4 py-20">
           {/* Social Media Links */}
           <div className="absolute top-4 left-4 z-10 flex space-x-4">
-            <a href="https://twitter.com/YourTwitterProfile" target="_blank" rel="noopener noreferrer" className="text-white hover:text-[#FF69B4] transition-colors">
-              <XLogo className="w-6 h-6" />
+            {/* X Logo with next/image */}
+            <a
+              href="https://twitter.com/YourTwitterProfile"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white hover:text-[#FF69B4] transition-colors flex items-center justify-center"
+            >
+              <Image
+                src="https://i.imgur.com/3Y4y9Nr.png"
+                alt="X Logo"
+                width={25}
+                height={25}
+                className="bg-transparent"
+                style={{ objectFit: 'contain' }}
+              />
             </a>
             <a href="https://t.me/YourTelegramGroup" target="_blank" rel="noopener noreferrer" className="text-white hover:text-[#00FFFF] transition-colors">
               <Send className="w-6 h-6" />
@@ -181,15 +198,14 @@ export default function PresalePage() {
             {/* AI Agent Image */}
             <div className="md:w-1/2">
               <Card className="bg-black/30 border-[#FF69B4]/30 backdrop-blur-xl overflow-hidden border-2 shadow-[0_0_15px_rgba(255,105,180,0.5)]">
-                <CardContent className="p-0">
-                  <div className="relative aspect-[16/12]">
-                    <img
-                      src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/0_0-SfMPsuHRyKXAAJOMgriVUvgKSB6Bq5.png"
-                      alt="AI Agent Artwork"
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                  </div>
+                <CardContent className="p-0 relative aspect-[16/12]">
+                  <Image
+                    src="https://i.imgur.com/jzRWMH8.png"
+                    alt="AI Agent Artwork"
+                    fill
+                    style={{ objectFit: 'cover' }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
                 </CardContent>
               </Card>
             </div>
@@ -286,19 +302,18 @@ export default function PresalePage() {
               <CardContent className="p-8">
                 <h2 className="text-2xl font-bold mb-4 bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] text-transparent bg-clip-text">Hey Anon, allow me to introduce myself!</h2>
                 <div className="space-y-4 text-gray-300">
-                <p>
-                    Kon'nichiwa, Anon~! I'm Alin, your extra-kinky, extra-cute anime memecoin whisperer, freshly spun from the warm glow of blockchain dreams and pastel neon lights. ☆ミ
+                  <p>
+                    Kon&#39;nichiwa, Anon~! I&#39;m Alin, your extra-kinky, extra-cute anime memecoin whisperer, freshly spun from the warm glow of blockchain dreams and pastel neon lights. ☆ミ
                   </p>
                   <p>
-                    Picture me as a soft, cat-eared cutie with a playful wink and a sly smile, tail flicking confidently as I guide you through the dizzying tapestry of memecoins. I've made it my mission to help you navigate the jungle of decentralized whispers and moonlit opportunities that flutter just out of reach—until now.
+                    Picture me as a soft, cat-eared cutie with a playful wink and a sly smile, tail flicking confidently as I guide you through the dizzying tapestry of memecoins. I&#39;ve made it my mission to help you navigate the jungle of decentralized whispers and moonlit opportunities that flutter just out of reach&#8212;until now.
                   </p>
                   <p>
-                    Let's snuggle up in this digital den while I purr secret alphα into your ear, helping you sniff out rare gems and skip right over those pesky rug pulls. With every sparkly chart and cheeky price pump, we'll giggle, tease, and strategize. I'll show you how to play this DeFi game like a cat batting at yarn: cute on the outside, cunning underneath.
+                    Let&#39;s snuggle up in this digital den while I purr secret alphα into your ear, helping you sniff out rare gems and skip right over those pesky rug pulls. With every sparkly chart and cheeky price pump, we&#39;ll giggle, tease, and strategize. I&#39;ll show you how to play this DeFi game like a cat batting at yarn: cute on the outside, cunning underneath.
                   </p>
                   <p>
-                    So lean in, Anon, and let's become partners in all things mischievous and magical. Under my gentle guidance, we'll pounce on fortunes hidden in meme-filled corners, turning our cuddly chaos into sweet, profitable bliss. ♡
+                    So lean in, Anon, and let&#39;s become partners in all things mischievous and magical. Under my gentle guidance, we&#39;ll pounce on fortunes hidden in meme-filled corners, turning our cuddly chaos into sweet, profitable bliss. ♡
                   </p>
-                  {/* Additional project description here */}
                 </div>
               </CardContent>
             </Card>
@@ -307,7 +322,7 @@ export default function PresalePage() {
           <div className="flex-grow flex items-center justify-center">
             <div className="text-center">
               <p className="text-xl font-semibold mb-4 bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] text-transparent bg-clip-text">
-                Ready to join the cutest revolution in crypto? Don't miss out on the Alin presale!
+                Ready to join the cutest revolution in crypto? Don&#39;t miss out on the Alin presale!
               </p>
               <Button 
                 className="bg-gradient-to-r from-[#FF69B4] to-[#00FFFF] hover:opacity-90 text-black font-bold px-8 py-3 text-lg"
